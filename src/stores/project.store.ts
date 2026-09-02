@@ -5,6 +5,7 @@ import { useAuthStore } from './auth.store';
 import { generateFlutterProjectFiles } from '@/utils/flutterTemplates';
 import { FlutterSupabaseAgent, AgentContextBuilder, keyPool } from '@/agent';
 import { usePreviewStore } from './preview.store';
+import { useWorkspaceStore } from './workspace.store';
 
 export const PLAN_LIMITS: Record<string, number> = {
   free: 5,
@@ -673,14 +674,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       return;
     }
 
-    // ── PLAN MODE: For initial generations, first show a plan for approval ──
-    // If this is the first generation and we don't have a pending plan, route through planning
+    // ── PLAN MODE: Skip by default for Lovable-style instant generation ──
+    // Only plan if user explicitly enabled it in settings
     if (isInitialGen && !get().pendingPlan) {
-      // Check if user has disabled planning in settings (default: enabled)
-      const skipPlan = localStorage.getItem('ff_skip_planning') === 'true';
-      if (!skipPlan) {
+      const wantPlan = localStorage.getItem('ff_enable_planning') === 'true';
+      if (wantPlan) {
         await get().requestPlan(projectId, content, onProgress);
-        return; // requestPlan will set pendingPlan, user approves -> approvePlan -> sendMessage again
+        return;
       }
     }
 
@@ -739,22 +739,27 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     await get().loadFiles(projectId);
     onProgress?.('Files saved and explorer refreshed');
 
-    // Auto-build preview after generation (like Lovable)
-    onProgress?.('Auto-building preview...');
+    // Always rebuild preview after generation (Lovable-style)
+    onProgress?.('Building live preview...');
     try {
       const previewStore = usePreviewStore.getState();
-      const currentSession = previewStore.getSession(projectId);
-      if (!currentSession || currentSession.status === 'stopped' || currentSession.status === 'failed') {
-        const currentFiles = get().files
-          .filter((f) => !f.is_directory)
-          .map((f) => ({ path: f.path, content: f.content }));
-        if (currentFiles.length > 0) {
-          await previewStore.build(projectId, currentFiles, {
-            supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
-            supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-          });
-          onProgress?.('Preview build started - check Preview tab');
-        }
+      // Stop any existing session first
+      const existingSession = previewStore.getSession(projectId);
+      if (existingSession && (existingSession.status === 'running' || existingSession.status === 'building')) {
+        await previewStore.stop(existingSession.sessionId);
+      }
+      const currentFiles = get().files
+        .filter((f) => !f.is_directory)
+        .map((f) => ({ path: f.path, content: f.content }));
+      if (currentFiles.length > 0) {
+        await previewStore.build(projectId, currentFiles, {
+          supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+          supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        });
+        onProgress?.('Preview ready');
+        // Auto-switch to preview tab
+        const { setActiveView } = useWorkspaceStore.getState();
+        setActiveView('preview');
       }
     } catch {
       // Auto-build is best-effort — don't block the flow

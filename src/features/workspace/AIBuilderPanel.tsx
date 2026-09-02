@@ -135,14 +135,13 @@ export function AIBuilderPanel() {
     setGenerationError(null);
     setGenerating(true);
     setShowTerminalLog(true);
-    setCurrentPhase('Planning with NVIDIA Nemotron Ultra...');
+    setCurrentPhase('Generating with AI...');
 
     const stepDefs: GenerationStep[] = [
       { id: 'understanding', label: 'Analyzing request & project context', status: 'pending' },
-      { id: 'planning', label: 'Designing architecture & Supabase schema', status: 'pending' },
-      { id: 'generating', label: 'Synthesizing production Flutter code', status: 'pending' },
-      { id: 'installing', label: 'Validating & auto-healing code', status: 'pending' },
-      { id: 'preview', label: 'Ready to preview', status: 'pending' },
+      { id: 'generating', label: 'Generating production Flutter code', status: 'pending' },
+      { id: 'installing', label: 'Saving files & validating', status: 'pending' },
+      { id: 'preview', label: 'Building live preview', status: 'pending' },
     ];
     setGenerationSteps(stepDefs);
 
@@ -150,13 +149,13 @@ export function AIBuilderPanel() {
       updateStep(step.id, { status: 'completed' });
     };
 
-    for (const step of stepDefs.slice(0, 2)) {
+    for (const step of stepDefs.slice(0, 1)) {
       updateStep(step.id, { status: 'running' });
       addLine({ type: 'output', content: `▶ ${step.label}` });
       completeStep(step);
     }
 
-    const generationStep = stepDefs[2];
+    const generationStep = stepDefs[1];
     updateStep(generationStep.id, { status: 'running' });
     addLine({ type: 'output', content: `▶ ${generationStep.label}` });
 
@@ -166,8 +165,8 @@ export function AIBuilderPanel() {
         addLine({ type: 'output', content: `  ${message}` });
       });
       completeStep(generationStep);
+      completeStep(stepDefs[2]);
       completeStep(stepDefs[3]);
-      completeStep(stepDefs[4]);
       addLine({ type: 'success', content: '✓ Generation complete — validated with 0 errors' });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'AI generation failed.';
